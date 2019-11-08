@@ -1,6 +1,43 @@
-module Ulid exposing (decode, encode)
+module Ulid exposing (Error(..), Generator, decode, encode, generate, init)
 
 import Crockford
+import Random
+import Task exposing (Task)
+import Time
+
+
+type Generator
+    = Generator Random.Seed
+
+
+type Error
+    = EncodingError Crockford.Error
+    | TimestampError
+
+
+init : Int -> Generator
+init seed =
+    Generator (Random.initialSeed seed)
+
+
+generate : Generator -> Task Error ( String, Generator )
+generate (Generator seed) =
+    let
+        ( random, newSeed ) =
+            Random.step randomInt seed
+
+        encodeAndMap : Int -> Result Error ( String, Generator )
+        encodeAndMap timestamp =
+            encode ( timestamp, random )
+                |> Result.map (\ulid -> ( ulid, Generator newSeed ))
+                |> Result.mapError EncodingError
+    in
+    Task.map encodeAndMap timestampTask
+        |> Task.andThen resultToTask
+
+
+
+-- Encoding & decoding
 
 
 timeLength =
@@ -39,3 +76,28 @@ decode str =
                 |> Crockford.decode
     in
     Result.map2 Tuple.pair timestamp random
+
+
+
+-- Utility functions
+
+
+randomInt : Random.Generator Int
+randomInt =
+    Random.int 0 Random.maxInt
+
+
+timestampTask : Task Error Int
+timestampTask =
+    Task.map Time.posixToMillis Time.now
+        |> Task.mapError (always TimestampError)
+
+
+resultToTask : Result x a -> Task x a
+resultToTask result =
+    case result of
+        Ok value ->
+            Task.succeed value
+
+        Err err ->
+            Task.fail err
