@@ -20,20 +20,20 @@ init seed =
     Generator (Random.initialSeed seed)
 
 
-generate : Generator -> Task Error ( String, Generator )
+generate : Generator -> ( Generator, Task Error String )
 generate (Generator seed) =
     let
         ( random, newSeed ) =
             Random.step randomInt seed
 
-        encodeAndMap : Int -> Result Error ( String, Generator )
+        encodeAndMap : Int -> Result Error String
         encodeAndMap timestamp =
             encode ( timestamp, random )
-                |> Result.map (\ulid -> ( ulid, Generator newSeed ))
                 |> Result.mapError EncodingError
     in
     Task.map encodeAndMap timestampTask
         |> Task.andThen resultToTask
+        |> Tuple.pair (Generator newSeed)
 
 
 
